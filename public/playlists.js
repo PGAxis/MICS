@@ -16,6 +16,9 @@ const prev = document.getElementById("prev");
 const next = document.getElementById("next");
 const repeatBtn = document.getElementById("repeat");
 const playlistShuffle = document.getElementById("shuffle-play");
+const volumeBtn = document.getElementById("volume-btn");
+const volumePanel = document.getElementById("volume-panel");
+const volumeSlider = document.getElementById("volume-slider");
 
 let oldPlaylists = [];
 
@@ -105,6 +108,37 @@ playlistShuffle.addEventListener("click", () => {
     body: JSON.stringify({ playlist: currPlaylist, shuffle: true })
   });
 });
+
+volumeBtn.addEventListener("click", async () => {
+  volumePanel.classList.toggle("hidden");
+
+  if (!volumePanel.classList.contains("hidden")) {
+    const res = await fetch("/api/player/volume");
+    const { volume } = await res.json();
+
+    volumeSlider.value = volume;
+  }
+});
+
+volumeSlider.addEventListener("input", () => {
+  setVolIcon(volumeSlider.value);
+  fetch("/api/player/volume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ volume: volumeSlider.value })
+  });
+});
+
+function volumeIcon(vol) {
+  if (vol === 0) return "/icons/volume-off.svg";
+  if (vol < 40) return "/icons/volume-low.svg";
+  return "/icons/volume-high.svg";
+}
+
+function setVolIcon(vol) {
+  const volBtn = document.querySelector("#volume-btn img");
+  volBtn.src = volumeIcon(vol);
+}
 
 function formatDuration(seconds) {
   const hrs = Math.floor(seconds / 3600);
@@ -324,12 +358,20 @@ async function updateCurrSong() {
   }
 }
 
+async function updateVolume() {
+  const res = await fetch("/api/player/volume");
+  const { volume } = await res.json();
+
+  setVolIcon(volume);
+}
+
 async function keepPageUpdated() {
-  loadPlaylist();
-  updateCurrSong();
+  await loadPlaylist();
+  await updateCurrSong();
   if (currPlaylist !== null) {
-    reloadOnePlaylist(currPlaylist.name);
+    await reloadOnePlaylist(currPlaylist.name);
   }
+  await updateVolume();
 }
 
 setInterval(keepPageUpdated, 500);

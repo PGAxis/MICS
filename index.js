@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import db from "./db/database.js";
@@ -9,6 +10,9 @@ import * as playlist from "./songMngmnt/playlist.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const CFG_PATH = path.join(__dirname, "config.json");
+let cfg = JSON.parse(fs.readFileSync(CFG_PATH));
 
 const server = express();
 const PORT = 3000;
@@ -270,8 +274,20 @@ server.post("/api/player/prev", async (req, res) => {
   res.status(200).json({ success: true });
 });
 
+server.post("/api/player/volume", async (req, res) => {
+  const { volume } = req.body;
+  await player.setVolume(volume);
+  cfg.volume = Math.max(0, Math.min(100, volume));
+  res.status(200).json({ success: true });
+});
+
 server.get("/api/player/state", async (req, res) => {
   res.status(200).json(await player.getState());
+});
+
+server.get("/api/player/volume", async (req, res) => {
+  const volume = await player.getVolume();
+  res.status(200).json({ volume });
 });
 
 // ---------- Server Stuff ----------
@@ -518,14 +534,24 @@ function getRandomUnique(source, target) {
   return picked;
 }
 
+async function loadCfg() {
+  await player.setVolume(cfg.volume);
+}
+
 const srvr = server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
 
+await loadCfg();
+
 process.on("SIGINT", shutdown);
 
 function shutdown() {
-  console.log("\n\nShutting down...");
+  console.log("\n\nSaving...");
+
+  fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
+
+  console.log("\nShutting down...");
 
   srvr.close(() => {
     console.log("Server stopped.");

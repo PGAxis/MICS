@@ -35,6 +35,29 @@ body.no-scroll {
   padding-top: 10px;
 }
 
+.volume-container {
+  position: relative;
+}
+
+.volume-panel {
+  position: absolute;
+  bottom: -100%;
+  left: -50%;
+  transform: translateX(-50%);
+  background: var(--bg-tertiary);
+  padding: 10px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.3);
+}
+
+.volume-panel.hidden {
+  display: none;
+}
+
+.volume-panel input[type="range"] {
+  width: 120px;
+}
+
 /* ===== TITLE ===== */
 .title {
   text-align: center;

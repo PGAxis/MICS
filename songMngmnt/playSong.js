@@ -26,6 +26,14 @@ async function stop() {
     currentSong = null;
 }
 
+async function getVolume() {
+    return await player.getProperty("volume");
+}
+
+async function setVolume(vol) {
+    await player.setProperty("volume", Math.max(0, Math.min(100, vol)));
+}
+
 async function getState() {
   if (!currentSong) return { isPlaying: false, currentSong: null, position: 0, duration: 0 };
 
@@ -80,6 +88,8 @@ export {
     pause,
     resume,
     stop,
+    getVolume,
+    setVolume,
     getState,
     onSongEnd,
     setRepeatState

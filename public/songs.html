@@ -9,7 +9,25 @@
 <body>
 
   <header class="header">
-    <h1 class="title">MICS Player</h1>
+    <div style="display: grid; grid-template-columns: 64px 1fr 60px; align-items: center;">
+      <div></div>
+      <h1 class="title">MICS Player</h1>
+      <div class="volume-container">
+        <button id="volume-btn" class="icon-btn">
+          <img id="volume-icon" src="/icons/volume-high.svg">
+        </button>
+  
+        <div id="volume-panel" class="volume-panel hidden">
+          <input
+            id="volume-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+          />
+        </div>
+      </div>
+    </div>
   
     <nav class="tabs">
       <button class="tab active" data-tab="songs">Songs</button>
