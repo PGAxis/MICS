@@ -189,6 +189,8 @@ async function updateCurrSong() {
     const res = await fetch("/api/player/state");
     const data = await res.json();
 
+    //console.log(data);
+
     if (data.isPlaying) {
       playPause.src = "/icons/pause.svg";
       cover.src = `/covers/${data.currentSong.id}.jpg`;

@@ -325,7 +325,7 @@ function dequeue(id, index = null) {
   queue.sort((a, b) => a.index - b.index);
 }
 
-async function queueChangedPlay(force = false) {
+async function queueChangedPlay(force = false, notify = false) {
   if (queue.length === 0) {
     await player.stop();
     return;
@@ -334,14 +334,14 @@ async function queueChangedPlay(force = false) {
   if (oldQueue.length === 0) {
     const song = dbHelper.songByID(queue[0].id);
     if (!song) return;
-    await player.play(song);
+    await player.play(song, notify ? cfg.lastPos : null);
     return;
   }
 
   if (force === true) {
     const song = dbHelper.songByID(queue[0].id);
     if (!song) return;
-    await player.play(song);
+    await player.play(song, notify ? cfg.lastPos : null);
     return;
   }
 
@@ -534,8 +534,26 @@ function getRandomUnique(source, target) {
   return picked;
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function loadCfg() {
   await player.setVolume(cfg.volume);
+  await player.stop();
+
+  oldQueue = [...queue];
+
+  queue = cfg.queue;
+  history = cfg.history;
+  repeatQueue = cfg.repeatQueue;
+  playlistPlaying = cfg.playlistPlaying;
+  useShuffle = cfg.useShuffle;
+  playlistInUse = cfg.playlistInUse;
+
+  await queueChangedPlay(true, true);
+
+  player.setRepeatState(repeatQueue);
 }
 
 const srvr = server.listen(PORT, () => {
@@ -546,8 +564,25 @@ await loadCfg();
 
 process.on("SIGINT", shutdown);
 
-function shutdown() {
+async function shutdown() {
   console.log("\n\nSaving...");
+
+  const pos = await player.getPos();
+
+  await player.resume();
+  await player.stop();
+
+  await sleep(1000);
+
+  await player.quit();
+
+  cfg.queue = queue;
+  cfg.lastPos = pos || 0;
+  cfg.history = history;
+  cfg.repeatQueue = repeatQueue;
+  cfg.playlistPlaying = playlistPlaying;
+  cfg.useShuffle = useShuffle;
+  cfg.playlistInUse = playlistInUse;
 
   fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
 
