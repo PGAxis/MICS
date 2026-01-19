@@ -12,6 +12,8 @@ let queue = [];
 
 let imageObserver = null;
 
+let lastVolume = 0;
+
 playPauseBtn.addEventListener("click", async () => {
   fetch("/api/player/toggle", {
     method: "POST",
@@ -189,8 +191,6 @@ async function updateCurrSong() {
     const res = await fetch("/api/player/state");
     const data = await res.json();
 
-    //console.log(data);
-
     if (data.isPlaying) {
       playPause.src = "/icons/pause.svg";
       cover.src = `/covers/${data.currentSong.id}.jpg`;
@@ -216,22 +216,18 @@ async function updateCurrSong() {
     } else {
       repeat.src = "/icons/continue-q.svg";
     }
+
+    if (data.volume !== null && data.volume !== lastVolume) {
+      setVolIcon(data.volume);
+    }
   } catch (err) {
     console.error(err);
   }
 }
 
-async function updateVolume() {
-  const res = await fetch("/api/player/volume");
-  const { volume } = await res.json();
-
-  setVolIcon(volume);
-}
-
 async function keepPageUpdated() {
   await loadQueue();
   await updateCurrSong();
-  await updateVolume();
 }
 
 setInterval(keepPageUpdated, 500);

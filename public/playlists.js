@@ -26,6 +26,8 @@ let currPlaylist = null;
 
 let imageObserver = null;
 
+let lastVolume = 0;
+
 backBtn.addEventListener("click", () => {
   currPlaylist = null;
   plistView.hidden = true;
@@ -353,16 +355,13 @@ async function updateCurrSong() {
     } else {
       repeat.src = "/icons/continue-q.svg";
     }
+
+    if (data.volume !== null && data.volume !== lastVolume) {
+      setVolIcon(data.volume);
+    }
   } catch (err) {
     console.error(err);
   }
-}
-
-async function updateVolume() {
-  const res = await fetch("/api/player/volume");
-  const { volume } = await res.json();
-
-  setVolIcon(volume);
 }
 
 async function keepPageUpdated() {
@@ -371,7 +370,6 @@ async function keepPageUpdated() {
   if (currPlaylist !== null) {
     await reloadOnePlaylist(currPlaylist.name);
   }
-  await updateVolume();
 }
 
 setInterval(keepPageUpdated, 500);

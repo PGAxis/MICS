@@ -539,6 +539,7 @@ function sleep(ms) {
 }
 
 async function loadCfg() {
+  await player.start();
   await player.setVolume(cfg.volume);
   await player.stop();
 

@@ -1,6 +1,6 @@
 {
-  "volume": 100,
-  "repeatQueue": false,
+  "volume": 70,
+  "repeatQueue": true,
   "playlistPlaying": false,
   "lastPos": 0,
   "useShuffle": false,

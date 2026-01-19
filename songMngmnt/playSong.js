@@ -7,6 +7,10 @@ let isRepeating = false;
 let wasPlaying = false;
 const endListeners = new Set();
 
+async function start() {
+  await player.load();
+}
+
 async function play(song, pos = 0) {
   await stop();
   currentSong = song;
@@ -43,18 +47,20 @@ async function setVolume(vol) {
 }
 
 async function getState() {
-  if (!currentSong) return { isPlaying: false, currentSong: null, position: 0, duration: 0 };
+  if (!currentSong) return { isPlaying: false, currentSong: null, isRepeating, position: 0, duration: 0, volume: await player.getProperty("volume") || 0 };
 
   const isPlaying = await player.getProperty("pause").then(p => !p);
   const position = await player.getProperty("time-pos");
   const duration = await player.getProperty("duration");
+  const volume = await player.getProperty("volume");
 
   return {
     isPlaying,
     currentSong,
     isRepeating,
     position: position || 0,
-    duration: duration || 0
+    duration: duration || 0,
+    volume: volume || 0
   };
 }
 
@@ -128,6 +134,7 @@ function notifySongEnded() {
 }
 
 export {
+  start,
   play,
   pause,
   resume,

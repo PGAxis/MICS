@@ -20,6 +20,8 @@ let imageObserver = null;
 
 let workedOnSong = [];
 
+let lastVolume = 0;
+
 playPauseBtn.addEventListener("click", async () => {
   fetch("/api/player/toggle", {
     method: "POST",
@@ -289,21 +291,17 @@ async function updateCurrSong() {
     } else {
       repeat.src = "/icons/continue-q.svg";
     }
+
+    if (data.volume !== null && data.volume !== lastVolume) {
+      setVolIcon(data.volume);
+    }
   } catch (err) {
     console.error(err);
   }
 }
 
-async function updateVolume() {
-  const res = await fetch("/api/player/volume");
-  const { volume } = await res.json();
-
-  setVolIcon(volume);
-}
-
 async function keepPageUpdated() {
   await updateCurrSong();
-  await updateVolume();
 }
 
 setInterval(keepPageUpdated, 500);
