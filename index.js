@@ -14,6 +14,8 @@ const __dirname = path.dirname(__filename);
 const CFG_PATH = path.join(__dirname, "config.json");
 let cfg = JSON.parse(fs.readFileSync(CFG_PATH));
 
+let stopping = false;
+
 const server = express();
 const PORT = 3000;
 
@@ -28,7 +30,7 @@ let useShuffle = false;
 let playlistInUse = null;
 
 player.onSongEnd(async () => {
-  await autoDequeue();
+  if (!stopping) await autoDequeue();
 })
 
 const commandQueue = [];
@@ -567,6 +569,8 @@ process.on("SIGINT", shutdown);
 
 async function shutdown() {
   console.log("\n\nSaving...");
+
+  stopping = true;
 
   const pos = await player.getPos();
 
