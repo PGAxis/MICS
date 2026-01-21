@@ -35,6 +35,27 @@ body.no-scroll {
   padding-top: 10px;
 }
 
+#upload-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#upload-overlay.hidden {
+  display: none;
+}
+
+.upload-box {
+  background: #222;
+  padding: 40px;
+  border-radius: 12px;
+  border: 2px dashed #aaa;
+  text-align: center;
+}
+
 .volume-container {
   position: relative;
 }

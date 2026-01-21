@@ -15,12 +15,18 @@ const repeatBtn = document.getElementById("repeat");
 const volumeBtn = document.getElementById("volume-btn");
 const volumePanel = document.getElementById("volume-panel");
 const volumeSlider = document.getElementById("volume-slider");
+const addSongBtn = document.getElementById("add-song");
+const upOverlay = document.getElementById("upload-overlay");
+const browseBtn = document.getElementById("browse-btn");
+const input = document.getElementById("file-input");
 
 let imageObserver = null;
 
 let workedOnSong = [];
 
 let lastVolume = 0;
+
+let lastVersion = 0;
 
 playPauseBtn.addEventListener("click", async () => {
   fetch("/api/player/toggle", {
@@ -91,6 +97,44 @@ volumeSlider.addEventListener("input", () => {
     body: JSON.stringify({ volume: volumeSlider.value })
   });
 });
+
+addSongBtn.addEventListener("click", () => {
+  upOverlay.classList.remove("hidden");
+});
+
+browseBtn.addEventListener("click", () => {
+  input.click();
+});
+
+upOverlay.addEventListener("click", e => {
+  if (e.target === upOverlay) upOverlay.classList.add("hidden");
+});
+
+input.onchange = () => handleFiles(input.files);
+
+upOverlay.addEventListener("dragover", e => e.preventDefault());
+
+upOverlay.addEventListener("drop", e => {
+  e.preventDefault();
+  handleFiles(e.dataTransfer.files);
+});
+
+function handleFiles(files) {
+  const mp3s = [...files].filter(f => f.name.endsWith(".mp3"));
+  uploadFiles(mp3s);
+}
+
+async function uploadFiles(files) {
+  const form = new FormData();
+  files.forEach(f => form.append("songs", f));
+
+  await fetch("/api/upload", {
+    method: "POST",
+    body: form
+  });
+
+  upOverlay.classList.add("hidden");
+}
 
 function volumeIcon(vol) {
   if (vol === 0) return "/icons/volume-off.svg";
@@ -294,14 +338,26 @@ async function updateCurrSong() {
 
     if (data.volume !== null && data.volume !== lastVolume) {
       setVolIcon(data.volume);
+      volumeSlider.value = data.volume;
     }
   } catch (err) {
     console.error(err);
   }
 }
 
+async function updateSongs() {
+  const res = await fetch("/api/library");
+  const { version } = await res.json();
+
+  if (version !== lastVersion) {
+    lastVersion = version;
+    await loadSongs();
+  }
+}
+
 async function keepPageUpdated() {
   await updateCurrSong();
+  await updateSongs();
 }
 
 setInterval(keepPageUpdated, 500);

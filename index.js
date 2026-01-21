@@ -2,8 +2,10 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import multer from "multer";
+import { fileTypeFromFile } from "file-type";
 import db from "./db/database.js";
-import { scanSongs } from "./songMngmnt/scanSongs.js";
+import { scanSongs, addSongs } from "./songMngmnt/scanSongs.js";
 import * as player from "./songMngmnt/playSong.js";
 import * as dbHelper from "./songMngmnt/databaseSearch.js";
 import * as playlist from "./songMngmnt/playlist.js";
@@ -11,8 +13,14 @@ import * as playlist from "./songMngmnt/playlist.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const upload = multer({ dest: "/tmp/uploads" });
+
+const MUSIC_FOLDER = path.join(__dirname, "songs");
+
 const CFG_PATH = path.join(__dirname, "config.json");
 let cfg = JSON.parse(fs.readFileSync(CFG_PATH));
+
+let libraryVersion = 0;
 
 let stopping = false;
 
@@ -292,6 +300,41 @@ server.get("/api/player/volume", async (req, res) => {
   res.status(200).json({ volume });
 });
 
+// ---------- Upload/Library ----------
+
+server.get("/api/library", (req, res) => {
+  res.status(200).json({ version: libraryVersion });
+});
+
+server.post("/api/upload", upload.array("songs"), async (req, res) => {
+  const songs = [];
+
+  for (const file of req.files) {
+    const type = await fileTypeFromFile(file.path);
+
+    if (!type || type.mime !== "audio/mpeg") {
+      fs.unlinkSync(file.path);
+      continue;
+    }
+
+    const fileName = path.join(MUSIC_FOLDER, file.originalname);
+
+    if (!fs.existsSync(fileName)) {
+      fs.renameSync(
+        file.path,
+        fileName
+      );
+
+      songs.push(fileName);
+    }
+  }
+
+  await addSongs(songs);
+  libraryVersion++;
+
+  res.status(200).json({ success: true });
+});
+
 // ---------- Server Stuff ----------
 
 function enqueue(id, index = null) {
@@ -426,7 +469,7 @@ async function initPlaylistQueue(playlist, shuffle) {
 
 async function playlistChanged(newPlaylist, changedSong) {
   if (playlistPlaying === true && playlistInUse.name === newPlaylist.name) {
-    if (!shuffle) {
+    if (!useShuffle) {
       if (newPlaylist.songs.length < playlistInUse.songs.length) {
         playlistInUse = newPlaylist;
   
@@ -485,7 +528,8 @@ async function playlistChanged(newPlaylist, changedSong) {
 
           oldQueue = [...queue];
 
-          const newSong = getRandomUnique();
+          const newSong = getRandomUnique(playlistInUse.songs, oldQueue);
+          console.log(newSong);
           if (newSong) {
             enqueue(newSong.id);
           }
@@ -542,6 +586,7 @@ function sleep(ms) {
 
 async function loadCfg() {
   await player.start();
+  await sleep(500);
   await player.setVolume(cfg.volume);
   await player.stop();
 
@@ -565,21 +610,33 @@ const srvr = server.listen(PORT, () => {
 
 await loadCfg();
 
-process.on("SIGINT", shutdown);
+process.stdin.setEncoding("utf8");
+
+process.stdin.on("data", async (data) => {
+  const cmd = data.trim();
+
+  if (cmd === "stop") {
+    console.log("Shutdown command recieved");
+    await shutdown();
+  }
+});
 
 async function shutdown() {
-  console.log("\n\nSaving...");
-
   stopping = true;
 
-  const pos = await player.getPos();
-
+  console.log("\n\nSaving...");
+  
+  const state = await player.getState();
+  const pos = state.position;
+  
   await player.resume();
   await player.stop();
 
   await sleep(1000);
 
   await player.quit();
+
+  await sleep(1000);
 
   cfg.queue = queue;
   cfg.lastPos = pos || 0;
@@ -597,4 +654,9 @@ async function shutdown() {
     console.log("Server stopped.");
     process.exit(0);
   });
+
+  setTimeout(() => {
+    console.warn("Force exiting.");
+    process.exit(0);
+  }, 2000);
 }

@@ -10,7 +10,9 @@
 
   <header class="header">
     <div style="display: grid; grid-template-columns: 64px 1fr 60px; align-items: center;">
-      <div></div>
+      <button id="add-song" class="icon-btn">
+        <img src="/icons/plus.svg" alt="Add Songs"/>
+      </button>
       <h1 class="title">MICS Player</h1>
       <div class="volume-container">
         <button id="volume-btn" class="icon-btn">
@@ -37,6 +39,13 @@
   </header>
 
   <main class="content">
+    <div id="upload-overlay" class="hidden">
+      <div class="upload-box">
+        <input type="file" id="file-input" accept=".mp3" multiple hidden />
+        <p>Drop MP3 files here or <button id="browse-btn">Browse</button></p>
+      </div>
+    </div>
+
     <section id="songs" class="tab-content active">
       <div id="songs-list"></div>
     </section>

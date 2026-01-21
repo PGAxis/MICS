@@ -358,6 +358,7 @@ async function updateCurrSong() {
 
     if (data.volume !== null && data.volume !== lastVolume) {
       setVolIcon(data.volume);
+     volumeSlider.value = data.volume;
     }
   } catch (err) {
     console.error(err);

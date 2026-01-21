@@ -12,118 +12,177 @@ const COVER_FOLDER = path.join(__dirname, "../covers");
 const PLACEHOLDER = path.join(COVER_FOLDER, "placeholder.png");
 
 if (!fs.existsSync(COVER_FOLDER)) {
-    fs.mkdirSync(COVER_FOLDER);
+  fs.mkdirSync(COVER_FOLDER);
 }
 
 function scanFolder(folder) {
-    let files = [];
-    const entries = fs.readdirSync(folder, { withFileTypes: true });
-    for (const entry of entries) {
-        const fullPath = path.join(folder, entry.name);
-        if (entry.isDirectory()) {
-            files = files.concat(scanFolder(fullPath));
-        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".mp3")) {
-            files.push(fullPath);
-        }
+  let files = [];
+  const entries = fs.readdirSync(folder, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(folder, entry.name);
+    if (entry.isDirectory()) {
+      files = files.concat(scanFolder(fullPath));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".mp3")) {
+      files.push(fullPath);
     }
-    return files;
+  }
+  return files;
 }
 
 function saveCover(id, picture) {
-    const filePath = path.join(COVER_FOLDER, `${id}.jpg`);
+  const filePath = path.join(COVER_FOLDER, `${id}.jpg`);
 
-    if (fs.existsSync(filePath)) return;
+  if (fs.existsSync(filePath)) return;
 
-    if (picture) {
-        fs.writeFileSync(filePath, picture.data);
-        console.log(`Saved cover for ID ${id}`);
+  if (picture) {
+    fs.writeFileSync(filePath, picture.data);
+    console.log(`Saved cover for ID ${id}`);
+  } else {
+    if (fs.existsSync(PLACEHOLDER)) {
+      fs.copyFileSync(PLACEHOLDER, filePath);
+      console.log(`No cover provided, using placeholder for ID ${id}`);
     } else {
-        if (fs.existsSync(PLACEHOLDER)) {
-            fs.copyFileSync(PLACEHOLDER, filePath);
-            console.log(`No cover provided, using placeholder for ID ${id}`);
-        } else {
-            console.warn(`Placeholder not found at ${PLACEHOLDER}`);
-        }
+      console.warn(`Placeholder not found at ${PLACEHOLDER}`);
     }
+  }
 }
 
 function removeSongs(files, dbSongs) {
-    const fileSet = new Set(files.map(p => path.normalize(p)));
+  const fileSet = new Set(files.map(p => path.normalize(p)));
 
-    const deleteStmt = db.prepare("DELETE FROM songs WHERE id = ?");
+  const deleteStmt = db.prepare("DELETE FROM songs WHERE id = ?");
 
-    let removed = 0
+  let removed = 0
 
-    const tx = db.transaction(() => {
+  const tx = db.transaction(() => {
+    for (const song of dbSongs) {
+      const songPath = path.normalize(song.path);
 
-        for (const song of dbSongs) {
-            const songPath = path.normalize(song.path);
-    
-            if (!fileSet.has(songPath)) {
-                deleteStmt.run(song.id);
-                fs.rmSync(path.join(COVER_FOLDER, `${song.id}.jpg`));
-                removed++;
-            }
-        }
-    });
+      if (!fileSet.has(songPath)) {
+        deleteStmt.run(song.id);
+        fs.rmSync(path.join(COVER_FOLDER, `${song.id}.jpg`));
+        removed++;
+      }
+    }
+  });
 
-    tx();
+  tx();
 
-    return removed;
+  return removed;
 }
 
 async function scanSongs() {
-    const files = scanFolder(MUSIC_FOLDER);
+  const files = scanFolder(MUSIC_FOLDER);
 
-    const allSongs = db.prepare("SELECT id, path FROM songs").all();
+  const allSongs = db.prepare("SELECT id, path FROM songs").all();
 
-    const removed = removeSongs(files, allSongs);
-    let added = 0;
+  const removed = removeSongs(files, allSongs);
+  let added = 0;
 
-    const findByPath = db.prepare("SELECT id FROM songs WHERE path = ?");
+  const findByPath = db.prepare("SELECT id FROM songs WHERE path = ?");
 
-    for (const filePath of files) {
-        const existing = findByPath.get(filePath);
-        if (existing) {
-            const coverPath = path.join(COVER_FOLDER, `${existing.id}.jpg`);
-            if (!fs.existsSync(coverPath)) {
-                try {
-                    const metadata = await parseFile(filePath);
-                    const picture = metadata.common.picture?.[0];
-                    saveCover(existing.id, picture);
-                } catch (err) {
-                    console.error(`Failed to read cover for ${filePath}: ${err.message}`);
-                }
-            }
-            continue;
-        }
-
+  for (const filePath of files) {
+    const existing = findByPath.get(filePath);
+    if (existing) {
+      const coverPath = path.join(COVER_FOLDER, `${existing.id}.jpg`);
+      if (!fs.existsSync(coverPath)) {
         try {
-            const metadata = await parseFile(filePath);
-
-            const title = metadata.common.title || path.basename(filePath, ".mp3");
-            const artist = metadata.common.artist || "Unknown";
-            const duration = Math.round(metadata.format.duration || 0);
-
-            const result = db.prepare(`
-                INSERT INTO songs (name, artist, duration, path)
-                VALUES (?, ?, ?, ?)
-            `).run(title, artist, duration, filePath);
-
-            const songId = result.lastInsertRowid;
-
-            const picture = metadata.common.picture?.[0];
-            saveCover(songId, picture);
-
-            console.log(`Added: ${title} by ${artist}`);
-
-            added++;
+          const metadata = await parseFile(filePath);
+          const picture = metadata.common.picture?.[0];
+          saveCover(existing.id, picture);
         } catch (err) {
-            console.error(`Failed to read ${filePath}:`, err.message);
+          console.error(`Failed to read cover for ${filePath}: ${err.message}`);
         }
+      }
+      continue;
     }
 
-    console.log(`Scan complete! ${added} songs added, ${removed} songs removed.`);
+    try {
+      const metadata = await parseFile(filePath);
+
+      const title = metadata.common.title || path.basename(filePath, ".mp3");
+      const artist = metadata.common.artist || "Unknown";
+      const duration = Math.round(metadata.format.duration || 0);
+
+      const result = db.prepare(`
+        INSERT INTO songs (name, artist, duration, path)
+        VALUES (?, ?, ?, ?)
+      `).run(title, artist, duration, filePath);
+
+      const songId = result.lastInsertRowid;
+
+      const picture = metadata.common.picture?.[0];
+      saveCover(songId, picture);
+
+      console.log(`Added: ${title} by ${artist}`);
+
+      added++;
+    } catch (err) {
+      console.error(`Failed to read ${filePath}:`, err.message);
+    }
+  }
+
+  console.log(`Scan complete! ${added} songs added, ${removed} songs removed.`);
 }
 
-export { scanSongs };
+async function addSongs(songs) {
+  const toInsert = [];
+  let added = 0;
+  const findByPath = db.prepare("SELECT id FROM songs WHERE path = ?");
+
+  for (const songPath of songs) {
+    const existing = findByPath.get(songPath);
+    if (existing) {
+      const coverPath = path.join(COVER_FOLDER, `${existing.id}.jpg`);
+      if (!fs.existsSync(coverPath)) {
+        try {
+          const metadata = await parseFile(songPath);
+          const picture = metadata.common.picture?.[0];
+          saveCover(existing.id, picture);
+        } catch (err) {
+          console.error(`Failed to read cover for ${songPath}: ${err.message}`);
+        }
+      }
+      continue;
+    }
+
+    try {
+      const metadata = await parseFile(songPath);
+
+      toInsert.push({
+        path: songPath,
+        title: metadata.common.title || path.basename(songPath, ".mp3"),
+        artist: metadata.common.artist || "Unknown",
+        duration: Math.round(metadata.format.duration || 0),
+        picture: metadata.common.picture?.[0]
+      });
+    } catch (err) {
+      console.error(`Failed to read ${songPath}:`, err.message);
+    }
+  }
+
+  const insertStmt = db.prepare(`
+    INSERT INTO songs (name, artist, duration, path)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const tx = db.transaction(() => {
+    for (const song of toInsert) {
+      const result = insertStmt.run(
+        song.title,
+        song.artist,
+        song.duration,
+        song.path
+      );
+
+      saveCover(result.lastInsertRowid, song.picture);
+      added++;
+    }
+  });
+
+  tx();
+
+  console.log(`Addition complete! ${added} songs added.`);
+}
+
+export { scanSongs, addSongs };

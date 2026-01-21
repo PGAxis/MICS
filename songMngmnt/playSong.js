@@ -1,6 +1,6 @@
 import MPV from "node-mpv";
 
-const player = new MPV({audio_only: true, auto_restart: true});
+const player = new MPV({audio_only: true, auto_restart: false});
 let currentSong = null;
 let isRepeating = false;
 
@@ -62,12 +62,6 @@ async function getState() {
     duration: duration || 0,
     volume: volume || 0
   };
-}
-
-async function getPos() {
-  if (!currentSong) return;
-
-  return await player.getProperty("time-pos");
 }
 
 async function setPos(sec) {
@@ -144,7 +138,6 @@ export {
   getState,
   onSongEnd,
   setRepeatState,
-  getPos,
   setPos,
   quit
 };
