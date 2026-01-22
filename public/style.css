@@ -429,6 +429,12 @@ body.no-scroll {
     padding-bottom: 150px;
   }
 
+  .volume-panel {
+    left: -50%;
+    bottom: -150%;
+    scale: 2;
+  }
+
   .song-item {
     grid-template-columns: 128px 1fr 80px 60px;
     padding: 14px;

@@ -22,18 +22,20 @@ playPauseBtn.addEventListener("click", async () => {
   await updateCurrSong();
 });
 
-prev.addEventListener("click", () => {
+prev.addEventListener("click", async () => {
   fetch("/api/player/prev", {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   });
+  await updateCurrSong();
 });
 
-next.addEventListener("click", () => {
+next.addEventListener("click", async () => {
   fetch("/api/player/next", {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   });
+  await updateCurrSong();
 });
 
 repeatBtn.addEventListener("click", async () => {

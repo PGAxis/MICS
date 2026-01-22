@@ -9,6 +9,7 @@ import { scanSongs, addSongs } from "./songMngmnt/scanSongs.js";
 import * as player from "./songMngmnt/playSong.js";
 import * as dbHelper from "./songMngmnt/databaseSearch.js";
 import * as playlist from "./songMngmnt/playlist.js";
+import * as queueHelper from "./songMngmnt/queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,18 +28,8 @@ let stopping = false;
 const server = express();
 const PORT = 3000;
 
-let queue = [];
-let oldQueue = [];
-let repeatQueue = false;
-
-let history = [];
-
-let playlistPlaying = false;
-let useShuffle = false;
-let playlistInUse = null;
-
 player.onSongEnd(async () => {
-  if (!stopping) await autoDequeue();
+  if (!stopping) await queueHelper.autoDequeue();
 })
 
 const commandQueue = [];
@@ -124,7 +115,7 @@ server.post("/api/playlists/:name/add", async (req, res) => {
     try {
         const { songId, index } = req.body;
         const pl = playlist.addSongToPlaylist(req.params.name, songId, index);
-        await playlistChanged(pl, { id: songId, index: index });
+        await queueHelper.playlistChanged(pl, { id: songId, index: index });
         res.status(200).json(pl);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -135,7 +126,7 @@ server.post("/api/playlists/:name/remove", async (req, res) => {
     try {
         const { songId } = req.body;
         const pl = playlist.removeSongFromPlaylist(req.params.name, songId);
-        await playlistChanged(pl, { id: songId });
+        await queueHelper.playlistChanged(pl, { id: songId });
         res.status(200).json(pl);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -155,59 +146,36 @@ server.post("/api/playlists/remove", (req, res) => {
 // ---------- Queue ----------
 
 server.get("/api/queue", (req, res) => {
+  const queue = queueHelper.getQueue();
   res.status(200).json(queue);
 });
 
 server.post("/api/queue/playlist", async (req, res) => {
   const { playlist, shuffle } = req.body;
 
-  playlistPlaying = false;
-  useShuffle = false;
-  playlistInUse = null;
-
-  await initPlaylistQueue(playlist, shuffle);
+  await queueHelper.initPlaylistQueue(playlist, shuffle);
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/queue/add", async (req, res) => {
-  let { id, index } = req.body;
+  const { id, index } = req.body;
 
-  oldQueue = [...queue];
-
-  playlistPlaying = false;
-  useShuffle = false;
-  playlistInUse = null;
-
-  enqueue(id, index);
-
-  await queueChangedPlay();
+  await queueHelper.apiEnqueue(id, index);
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/queue/remove", async (req, res) => {
-  let { id, index } = req.body;
+  const { id, index } = req.body;
 
-  oldQueue = [...queue];
-
-  playlistPlaying = false;
-  useShuffle = false;
-  playlistInUse = null;
-
-  if (!index) {
-    index = queue.find(s => s.id === id).index;
-  }
-
-  dequeue(id, index);
-
-  if (index === 1) await queueChangedPlay();
+  await queueHelper.apiDequeue(id, index);
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/queue/repeat", (req, res) => {
-  toggleRepeat();
+  queueHelper.toggleRepeat();
 
   res.status(200).json({ success: true });
 });
@@ -216,25 +184,9 @@ server.post("/api/queue/repeat", (req, res) => {
 server.post("/api/player/play", async (req, res) => {
   const {id} = req.body;
 
-  const song = dbHelper.songByID(id);
-  if (!song) return res.sendStatus(404);
+  const ret = await queueHelper.apiPlay(id);
 
-  const index = 1;
-
-  oldQueue = [...queue];
-
-  if (playlistPlaying) {
-    playlistPlaying = false;
-    useShuffle = false;
-    playlistInUse = null;
-    queue = [];
-  }
-
-  enqueue(id, index);
-
-  await player.resume();
-
-  await queueChangedPlay(true);
+  if (ret === 0) return res.status(404).json({ success: false });
 
   res.status(200).json({ success: true });
 });
@@ -262,24 +214,13 @@ server.post("/api/player/stop", async (req, res) => {
 });
 
 server.post("/api/player/next", async (req, res) => {
-  await autoDequeue();
+  await queueHelper.autoDequeue();
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/player/prev", async (req, res) => {
-  const lastId = history.pop();
-
-  if (lastId) {
-    enqueue(lastId, 1);
-
-    if (useShuffle) {
-      oldQueue = [...queue];
-      dequeue(queue.at(-1)?.id);
-    }
-
-    await queueChangedPlay(true);
-  }
+  await queueHelper.apiPrev();
 
   res.status(200).json({ success: true });
 });
@@ -337,249 +278,6 @@ server.post("/api/upload", upload.array("songs"), async (req, res) => {
 
 // ---------- Server Stuff ----------
 
-function enqueue(id, index = null) {
-  if (!id) return;
-
-  if (!index) {
-    index = queue.length + 1;
-  }
-
-  queue.forEach(s => {
-    if (s.index >= index) {
-      s.index += 1;
-    }
-  });
-
-  queue.push({ id: id, index: index});
-  queue.sort((a, b) => a.index - b.index);
-}
-
-function dequeue(id, index = null) {
-  if (!id) return;
-
-  if (!index) {
-    index = queue.find(s => s.id === id).index;
-  }
-
-  queue = queue.filter(s => !(s.id === id && s.index === index));
-  queue.forEach(song => {
-    if (song.index > index) {
-      song.index -= 1;
-    }
-  });
-  queue.sort((a, b) => a.index - b.index);
-}
-
-async function queueChangedPlay(force = false, notify = false) {
-  if (queue.length === 0) {
-    await player.stop();
-    return;
-  }
-
-  if (oldQueue.length === 0) {
-    const song = dbHelper.songByID(queue[0].id);
-    if (!song) return;
-    await player.play(song, notify ? cfg.lastPos : null);
-    return;
-  }
-
-  if (force === true) {
-    const song = dbHelper.songByID(queue[0].id);
-    if (!song) return;
-    await player.play(song, notify ? cfg.lastPos : null);
-    return;
-  }
-
-  if (oldQueue[0].id !== queue[0].id) {
-    const song = dbHelper.songByID(queue[0].id);
-    if (!song) return;
-    await player.play(song);
-  } else if (oldQueue.length > 1) {
-    if (oldQueue[1].id === queue[0].id && queue.length !== oldQueue.length + 1) {
-      const song = dbHelper.songByID(queue[0].id);
-      if (!song) return;
-      await player.play(song);
-    }
-  }
-}
-
-async function autoDequeue() {
-  const current = queue[0];
-  if (current) {
-    history.push(current.id);
-    if (history.length > 5) {
-      history.shift();
-    }
-  }
-
-  oldQueue = [...queue];
-
-  queue = queue.filter(s => s.index !== 1);
-  queue.forEach(song => {
-    if (song.index > 1) {
-      song.index -= 1;
-    }
-  });
-  queue.sort((a, b) => a.index - b.index);
-
-  if (repeatQueue && useShuffle === false) {
-    const lastId = history.pop()
-
-    if (lastId) {
-      enqueue(lastId);
-    }
-  }
-
-  if (repeatQueue && useShuffle) {
-    const newSong = getRandomUnique(playlistInUse.songs, oldQueue);
-
-    if (newSong) {
-      enqueue(newSong.id);
-    }
-  }
-
-  await queueChangedPlay();
-}
-
-async function initPlaylistQueue(playlist, shuffle) {
-  playlistPlaying = true;
-  toggleRepeat(true);
-  useShuffle = shuffle ?? false;
-  playlistInUse = playlist;
-
-  oldQueue = [...queue];
-  queue = [];
-
-  await player.resume();
-
-  if (!shuffle) {
-    playlist.songs.forEach(song => {
-      enqueue(song.id);
-    });
-  } else {
-    const half = takeRandomHalf(playlist.songs);
-
-    half.forEach(song => {
-      enqueue(song.id);
-    });
-  }
-
-  await queueChangedPlay(true);
-}
-
-async function playlistChanged(newPlaylist, changedSong) {
-  if (playlistPlaying === true && playlistInUse.name === newPlaylist.name) {
-    if (!useShuffle) {
-      if (newPlaylist.songs.length < playlistInUse.songs.length) {
-        playlistInUse = newPlaylist;
-  
-        oldQueue = [...queue];
-        dequeue(changedSong.id);
-        await queueChangedPlay();
-      } else {
-        if (!changedSong.index) {
-          playlistInUse = newPlaylist;
-    
-          prevIndex = newPlaylist.songs.length - 1;
-  
-          const prevSong = playlistInUse.songs.find(s => s.index === prevIndex);
-          if (!prevSong) {
-            enqueue(changedSong.id);
-            await queueChangedPlay();
-            return;
-          }
-  
-          const queueIndex = queue.find(s => s.id === prevSong.id).index + 1;
-  
-          oldQueue = [...queue];
-          enqueue(changedSong.id, queueIndex);
-          await queueChangedPlay();
-        } else {
-          playlistInUse = newPlaylist;
-  
-          let prevIndex = changedSong.index - 1;
-          if (prevIndex === 0) {
-            prevIndex = newPlaylist.songs.length;
-          }
-          const prevSong = playlistInUse.songs.find(s => s.index === prevIndex);
-  
-          if (!prevSong) {
-            enqueue(changedSong.id);
-            await queueChangedPlay();
-            return;
-          }
-  
-          const queueIndex = queue.find(s => s.id === prevSong.id).index + 1;
-          oldQueue = [...queue];
-          enqueue(changedSong.id, queueIndex);
-          await queueChangedPlay();
-        }
-      }
-    } else {
-      if (newPlaylist.songs.length < playlistInUse.songs.length) {
-        playlistInUse = newPlaylist;
-  
-        oldQueue = [...queue];
-        dequeue(changedSong.id);
-        await queueChangedPlay();
-      } else {
-        if (Math.ceil(newPlaylist.songs.length / 2) > Math.ceil(playlistInUse.songs.length / 2)) {
-          playlistInUse = newPlaylist;
-
-          oldQueue = [...queue];
-
-          const newSong = getRandomUnique(playlistInUse.songs, oldQueue);
-          console.log(newSong);
-          if (newSong) {
-            enqueue(newSong.id);
-          }
-          await queueChangedPlay();
-        }
-      }
-    }
-  }
-}
-
-function toggleRepeat(repeat = null) {
-  if (repeat) {
-    repeatQueue = repeat;
-  } else {
-    repeatQueue = !repeatQueue;
-  }
-  player.setRepeatState(repeatQueue);
-}
-
-function takeRandomHalf(source) {
-  const shuffled = [...source];
-
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-
-  const half = Math.ceil(shuffled.length / 2);
-
-  const target = [];
-
-  for (let i = 0; i < half; i++) {
-    target.push(shuffled[i]);
-  }
-
-  return target;
-}
-
-function getRandomUnique(source, target) {
-  const existingIds = new Set(target.map(item => item.id));
-
-  const available = source.filter(item => !existingIds.has(item.id));
-
-  if (available.length === 0) return null;
-
-  const picked = available[Math.floor(Math.random() * available.length)];
-
-  return picked;
-}
-
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -590,22 +288,11 @@ async function loadCfg() {
   await player.setVolume(cfg.volume);
   await player.stop();
 
-  oldQueue = [...queue];
-
-  queue = cfg.queue;
-  history = cfg.history;
-  repeatQueue = cfg.repeatQueue;
-  playlistPlaying = cfg.playlistPlaying;
-  useShuffle = cfg.useShuffle;
-  playlistInUse = cfg.playlistInUse;
-
-  await queueChangedPlay(true, true);
-
-  player.setRepeatState(repeatQueue);
+  await queueHelper.apiLoadConfig(cfg);
 }
 
 const srvr = server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}\n`);
 });
 
 await loadCfg();
@@ -616,7 +303,7 @@ process.stdin.on("data", async (data) => {
   const cmd = data.trim();
 
   if (cmd === "stop") {
-    console.log("Shutdown command recieved");
+    console.log("\nShutdown command recieved");
     await shutdown();
   }
 });
@@ -638,25 +325,27 @@ async function shutdown() {
 
   await sleep(1000);
 
-  cfg.queue = queue;
+  const queueItem = queueHelper.getQueueItem();
+
+  cfg.queue = queueItem.queue;
   cfg.lastPos = pos || 0;
-  cfg.history = history;
-  cfg.repeatQueue = repeatQueue;
-  cfg.playlistPlaying = playlistPlaying;
-  cfg.useShuffle = useShuffle;
-  cfg.playlistInUse = playlistInUse;
+  cfg.history = queueItem.history;
+  cfg.repeatQueue = queueItem.repeatQueue;
+  cfg.playlistPlaying = queueItem.playlistPlaying;
+  cfg.useShuffle = queueItem.useShuffle;
+  cfg.playlistInUse = queueItem.playlistInUse;
 
   fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
 
   console.log("\nShutting down...");
 
   srvr.close(() => {
-    console.log("Server stopped.");
+    console.log("\nServer stopped.");
     process.exit(0);
   });
 
   setTimeout(() => {
-    console.warn("Force exiting.");
+    console.warn("\nForced server stop.");
     process.exit(0);
   }, 2000);
 }
