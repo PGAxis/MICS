@@ -1,101 +1,10 @@
 {
   "volume": 70,
-  "repeatQueue": true,
-  "playlistPlaying": true,
-  "lastPos": 242.637072,
-  "useShuffle": true,
-  "history": [
-    12,
-    3,
-    21,
-    8,
-    17
-  ],
-  "playlistInUse": {
-    "name": "Default Play",
-    "songs": [
-      {
-        "id": 3,
-        "index": 1
-      },
-      {
-        "id": 4,
-        "index": 2
-      },
-      {
-        "id": 10,
-        "index": 3
-      },
-      {
-        "id": 6,
-        "index": 4
-      },
-      {
-        "id": 12,
-        "index": 5
-      },
-      {
-        "id": 13,
-        "index": 6
-      },
-      {
-        "id": 16,
-        "index": 7
-      },
-      {
-        "id": 15,
-        "index": 8
-      },
-      {
-        "id": 17,
-        "index": 9
-      },
-      {
-        "id": 8,
-        "index": 10
-      },
-      {
-        "id": 18,
-        "index": 11
-      },
-      {
-        "id": 21,
-        "index": 12
-      },
-      {
-        "id": 20,
-        "index": 13
-      }
-    ]
-  },
-  "queue": [
-    {
-      "id": 6,
-      "index": 1
-    },
-    {
-      "id": 13,
-      "index": 2
-    },
-    {
-      "id": 10,
-      "index": 3
-    },
-    {
-      "id": 12,
-      "index": 4
-    },
-    {
-      "id": 4,
-      "index": 5
-    },
-    {
-      "id": 16,
-      "index": 6
-    },
-    {
-      "id": 8,
-      "index": 7
-    }
-  ]
+  "repeatQueue": false,
+  "playlistPlaying": false,
+  "lastPos": 0,
+  "useShuffle": false,
+  "history": [],
+  "playlistInUse": [],
+  "queue": []
 }
