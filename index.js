@@ -205,6 +205,17 @@ server.post("/api/queue/repeat", async (req, res) => {
 });
 
 // ---------- Player ----------
+
+server.get("/api/player/state", async (req, res) => {
+  const state = await enqueueCommand(cmds.state);
+  res.status(200).json(state);
+});
+
+server.get("/api/player/volume", async (req, res) => {
+  const volume = await enqueueCommand(cmds.getVolume);
+  res.status(200).json({ volume });
+});
+
 server.post("/api/player/play", async (req, res) => {
   const { id } = req.body;
 
@@ -243,16 +254,6 @@ server.post("/api/player/volume", async (req, res) => {
   const { volume } = req.body;
   await enqueueCommand(cmds.setVolume, [volume]);
   res.status(200).json({ success: true });
-});
-
-server.get("/api/player/state", async (req, res) => {
-  const state = await enqueueCommand(cmds.state);
-  res.status(200).json(state);
-});
-
-server.get("/api/player/volume", async (req, res) => {
-  const volume = await enqueueCommand(cmds.getVolume);
-  res.status(200).json({ volume });
 });
 
 // ---------- Upload/Library ----------
