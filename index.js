@@ -10,6 +10,7 @@ import * as player from "./songMngmnt/playSong.js";
 import * as dbHelper from "./songMngmnt/databaseSearch.js";
 import * as playlist from "./songMngmnt/playlist.js";
 import * as queueHelper from "./songMngmnt/queue.js";
+import { resolve } from "dns";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,8 +33,34 @@ player.onSongEnd(async () => {
   if (!stopping) await queueHelper.autoDequeue();
 })
 
+const cmds = {
+  getSongs: 1,
+  getSongId: 2,
+  getPList: 3,
+  getPListName: 4,
+  makePList: 5,
+  addToPlist: 6,
+  rmFromPList: 7,
+  rmPlist: 8,
+  getQueue: 9,
+  playPList: 10,
+  addQueue: 11,
+  rmQueue: 12,
+  queueRepeat: 13,
+  play: 14,
+  toggle: 15,
+  stop: 16,
+  next: 17,
+  prev: 18,
+  setVolume: 19,
+  state: 20,
+  getVolume: 21,
+  getLib: 22,
+  upload: 23
+}
 const commandQueue = [];
 let isProcessing = false;
+const maxQueue = 100;
 
 server.use(express.static("public"));
 
@@ -63,48 +90,48 @@ server.get("/queue", (req, res) => {
 
 // ---------- Songs ----------
 
-server.get("/api/songs", (req, res) => {
-  const songs = db.prepare("SELECT * FROM songs ORDER BY id").all();
-  res.status(200).json(songs.sort((a, b) => a.artist.toLowerCase().localeCompare(b.artist.toLowerCase())));
+server.get("/api/songs", async (req, res) => {
+  const result = await enqueueCommand(cmds.getSongs);
+  res.status(200).json(result);
 });
 
-server.get("/api/songById/:id", (req, res) => {
+server.get("/api/songById/:id", async (req, res) => {
   const id = Number(req.params.id);
   
-  const song = dbHelper.songByID(id);
+  const { success, code, content } = await enqueueCommand(cmds.getSongId, [id]);
   
-  if (!song) {
-    return res.status(404).json({ error: "Song not found" });
+  if (!success) {
+    return res.status(code).json({ error: content });
   }
   
-  res.status(200).json(song);
+  res.status(code).json(content);
 });
 
 // ---------- Playlists ----------
 
-server.get("/api/playlists", (req, res) => {
+server.get("/api/playlists", async (req, res) => {
     try {
-        const list = playlist.listPlaylists();
+        const list = await enqueueCommand(cmds.getPList);
         res.status(200).json(list);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-server.get("/api/playlist/:name", (req, res) => {
+server.get("/api/playlist/:name", async (req, res) => {
     try {
         const name = req.params.name;
-        const pl = playlist.listPlaylist(name);
+        const pl = await enqueueCommand(cmds.getPListName, [name]);
         res.status(200).json(pl);
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
-server.post("/api/playlists", (req, res) => {
+server.post("/api/playlists", async (req, res) => {
     try {
         const { name } = req.body;
-        const pl = playlist.createPlaylist(name);
+        const pl = await enqueueCommand(cmds.makePList, [name]);
         res.status(200).json(pl);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -114,8 +141,7 @@ server.post("/api/playlists", (req, res) => {
 server.post("/api/playlists/:name/add", async (req, res) => {
     try {
         const { songId, index } = req.body;
-        const pl = playlist.addSongToPlaylist(req.params.name, songId, index);
-        await queueHelper.playlistChanged(pl, { id: songId, index: index });
+        const pl = await enqueueCommand(cmds.addToPlist, [req.params.name, songId, index]);
         res.status(200).json(pl);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -125,19 +151,17 @@ server.post("/api/playlists/:name/add", async (req, res) => {
 server.post("/api/playlists/:name/remove", async (req, res) => {
     try {
         const { songId } = req.body;
-        const pl = playlist.removeSongFromPlaylist(req.params.name, songId);
-        await queueHelper.playlistChanged(pl, { id: songId });
+        const pl = await enqueueCommand(cmds.rmFromPList, [req.params.name, songId]);
         res.status(200).json(pl);
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 });
 
-server.post("/api/playlists/remove", (req, res) => {
+server.post("/api/playlists/remove", async (req, res) => {
     try {
         const { name } = req.body;
-        const stat = playlist.removePlaylist(name);
-        res.status(stat);
+        const stat = await enqueueCommand(cmds.rmPlist, [name]);
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
@@ -145,15 +169,15 @@ server.post("/api/playlists/remove", (req, res) => {
 
 // ---------- Queue ----------
 
-server.get("/api/queue", (req, res) => {
-  const queue = queueHelper.getQueue();
+server.get("/api/queue", async (req, res) => {
+  const queue = await enqueueCommand(cmds.getQueue);
   res.status(200).json(queue);
 });
 
 server.post("/api/queue/playlist", async (req, res) => {
   const { playlist, shuffle } = req.body;
 
-  await queueHelper.initPlaylistQueue(playlist, shuffle);
+  await enqueueCommand(cmds.playPList, [playlist, shuffle]);
 
   res.status(200).json({ success: true });
 });
@@ -161,7 +185,7 @@ server.post("/api/queue/playlist", async (req, res) => {
 server.post("/api/queue/add", async (req, res) => {
   const { id, index } = req.body;
 
-  await queueHelper.apiEnqueue(id, index);
+  await enqueueCommand(cmds.addQueue, [id, index]);
 
   res.status(200).json({ success: true });
 });
@@ -169,22 +193,22 @@ server.post("/api/queue/add", async (req, res) => {
 server.post("/api/queue/remove", async (req, res) => {
   const { id, index } = req.body;
 
-  await queueHelper.apiDequeue(id, index);
+  await enqueueCommand(cmds.rmQueue, [id, index]);
 
   res.status(200).json({ success: true });
 });
 
-server.post("/api/queue/repeat", (req, res) => {
-  queueHelper.toggleRepeat();
+server.post("/api/queue/repeat", async (req, res) => {
+  await enqueueCommand(cmds.queueRepeat);
 
   res.status(200).json({ success: true });
 });
 
 // ---------- Player ----------
 server.post("/api/player/play", async (req, res) => {
-  const {id} = req.body;
+  const { id } = req.body;
 
-  const ret = await queueHelper.apiPlay(id);
+  const ret = await enqueueCommand(cmds.play, [id]);
 
   if (ret === 0) return res.status(404).json({ success: false });
 
@@ -192,91 +216,196 @@ server.post("/api/player/play", async (req, res) => {
 });
 
 server.post("/api/player/toggle", async (req, res) => {
-  const state = await player.getState();
-
-  if (state.isPlaying) {
-    await player.pause();
-  } else {
-    await player.resume();
-  }
+  await enqueueCommand(cmds.toggle);
 
   res.status(200).json(await player.getState());
 });
 
 server.post("/api/player/stop", async (req, res) => {
-  const state = await player.getState();
-
-  if (state.duration == 0 && state.position == 0) {
-    await player.stop();
-  }
+  await enqueueCommand(cmds.stop);
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/player/next", async (req, res) => {
-  await queueHelper.autoDequeue();
+  await enqueueCommand(cmds.next);
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/player/prev", async (req, res) => {
-  await queueHelper.apiPrev();
+  await enqueueCommand(cmds.prev);
 
   res.status(200).json({ success: true });
 });
 
 server.post("/api/player/volume", async (req, res) => {
   const { volume } = req.body;
-  await player.setVolume(volume);
-  cfg.volume = Math.max(0, Math.min(100, volume));
+  await enqueueCommand(cmds.setVolume, [volume]);
   res.status(200).json({ success: true });
 });
 
 server.get("/api/player/state", async (req, res) => {
-  res.status(200).json(await player.getState());
+  const state = await enqueueCommand(cmds.state);
+  res.status(200).json(state);
 });
 
 server.get("/api/player/volume", async (req, res) => {
-  const volume = await player.getVolume();
+  const volume = await enqueueCommand(cmds.getVolume);
   res.status(200).json({ volume });
 });
 
 // ---------- Upload/Library ----------
 
-server.get("/api/library", (req, res) => {
-  res.status(200).json({ version: libraryVersion });
+server.get("/api/library", async (req, res) => {
+  const version = await enqueueCommand(cmds.getLib);
+  res.status(200).json({ version: version });
 });
 
 server.post("/api/upload", upload.array("songs"), async (req, res) => {
-  const songs = [];
-
-  for (const file of req.files) {
-    const type = await fileTypeFromFile(file.path);
-
-    if (!type || type.mime !== "audio/mpeg") {
-      fs.unlinkSync(file.path);
-      continue;
-    }
-
-    const fileName = path.join(MUSIC_FOLDER, file.originalname);
-
-    if (!fs.existsSync(fileName)) {
-      fs.renameSync(
-        file.path,
-        fileName
-      );
-
-      songs.push(fileName);
-    }
-  }
-
-  await addSongs(songs);
-  libraryVersion++;
+  await enqueueCommand(cmds.upload, [req.files]);
 
   res.status(200).json({ success: true });
 });
 
 // ---------- Server Stuff ----------
+
+async function enqueueCommand(cmd, args) {
+  if (commandQueue.length >= maxQueue) {
+    return Promise.reject({
+      status: 429,
+      message: "Server busy, try again"
+    });
+  };
+
+  return new Promise((resolve, reject) => {
+    commandQueue.push({ cmd, args, resolve, reject });
+    processCommandQueue();
+  })
+}
+
+async function processCommandQueue() {
+  if (isProcessing) return;
+  isProcessing = true;
+
+  while (commandQueue.length > 0) {
+    const { cmd, args, resolve, reject } = commandQueue.shift();
+
+    try {
+      const result = await executeCommand(cmd, args);
+      resolve(result);
+    } catch (err) {
+      reject(err);
+    }
+  }
+
+  isProcessing = false;
+}
+
+async function executeCommand(cmd, args) {
+  args = args || [];
+  switch(cmd) {
+    case cmds.getSongs:
+      const songs = db.prepare("SELECT * FROM songs ORDER BY id").all();
+      return songs.sort((a, b) => a.artist.toLowerCase().localeCompare(b.artist.toLowerCase()));
+    case cmds.getSongId:
+      const song = dbHelper.songByID(...args);
+      if (!song) {
+        return { success: false, code: 404, content: "Song not found" };
+      }
+      return { success: true, code: 200, content: song };
+    case cmds.getPList:
+      const list = playlist.listPlaylists();
+      return list;
+    case cmds.getPListName:
+      const pl = playlist.listPlaylist(...args);
+      return pl;
+    case cmds.makePList:
+      const plist = playlist.createPlaylist(...args);
+      return plist;
+    case cmds.addToPlist:
+      const plst = playlist.addSongToPlaylist(...args);
+      await queueHelper.playlistChanged(plst, { id: args[1], index: args[2] });
+      return plst;
+    case cmds.rmFromPList:
+      const pist = playlist.removeSongFromPlaylist(...args);
+      await queueHelper.playlistChanged(pist, { id: args[1] });
+      return pist;
+    case cmds.rmPlist:
+      const stat = playlist.removePlaylist(...args);
+      return stat;
+    case cmds.getQueue:
+      const queue = queueHelper.getQueue();
+      return queue;
+    case cmds.playPList:
+      await queueHelper.initPlaylistQueue(...args);
+      break;
+    case cmds.addQueue:
+      await queueHelper.apiEnqueue(...args);
+      break;
+    case cmds.rmQueue:
+      await queueHelper.apiDequeue(...args);
+      break;
+    case cmds.queueRepeat:
+      queueHelper.toggleRepeat();
+      break;
+    case cmds.play:
+      const ret = await queueHelper.apiPlay(id);
+      return ret;
+    case cmds.toggle:
+      const state = await player.getState();
+      if (state.isPlaying) {
+        await player.pause();
+      } else {
+        await player.resume();
+      }
+      break;
+    case cmds.stop:
+      const ste = await player.getState();
+      if (ste.duration == 0 && ste.position == 0) {
+        await player.stop();
+      }
+      break;
+    case cmds.next:
+      await queueHelper.autoDequeue();
+      break;
+    case cmds.prev:
+      await queueHelper.apiPrev();
+      break;
+    case cmds.setVolume:
+      const volume = args[0];
+      await player.setVolume(...args);
+      cfg.volume = Math.max(0, Math.min(100, volume));
+      break;
+    case cmds.state:
+      return await player.getState();
+    case cmds.getVolume:
+      return await player.getVolume();
+    case cmds.getLib:
+      return libraryVersion;
+    case cmds.upload:
+      const files = args[0];
+      const songes = [];
+      for (const file of files) {
+        const type = await fileTypeFromFile(file.path);
+        if (!type || type.mime !== "audio/mpeg") {
+          fs.unlinkSync(file.path);
+          continue;
+        }
+        const fileName = path.join(MUSIC_FOLDER, file.originalname);
+        if (!fs.existsSync(fileName)) {
+          fs.renameSync(
+            file.path,
+            fileName
+          );
+          songes.push(fileName);
+        }
+      }
+      await addSongs(songes);
+      libraryVersion++;
+      break;
+  }
+}
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -305,6 +434,10 @@ process.stdin.on("data", async (data) => {
   if (cmd === "stop") {
     console.log("\nShutdown command recieved");
     await shutdown();
+  } else if (cmd === "pause") {
+    await player.pause();
+  } else if (cmd === "play") {
+    await player.resume();
   }
 });
 
