@@ -18,6 +18,7 @@ The server now also includes simple queue-based DDoS protection, limiting the nu
 - Volume control.
 - Local MP3 uploads.
 - Simple DDoS protection using a maximum queue limit.
+- Simple command line control.
 
 ---
 
@@ -26,17 +27,14 @@ The server now also includes simple queue-based DDoS protection, limiting the nu
 1. Clone the repository
 ```bash
 git clone https://github.com/PGAxis/MICS.git
-cd MICS-Player
+cd MICS
 ```
 2. Install dependencies
 ```bash
 npm install
 ```
-3. Create a */songs* folder in the project root and place your MP3 files there:
-```bash
-mkdir songs
-```
-4. Run the server (by default, the server runs on [http://localhost:3000](http://localhost:3000).
+3. Place your MP3 files inside the */songs* folder in the project root
+4. Run the server (by default, the server runs on [http://localhost:3000](http://localhost:3000)).
 ```bash
 npm start
 ```
@@ -100,6 +98,6 @@ npm start
 ### Notes 📓
 
 - This app is designed to work with MP3 files only.
-- Editing config or playlists may result in errors -> edit with caution (or don't edit it at all, it is not that important).
+- Editing config or playlists may result in errors -> edit with caution (or don't edit it at all, it is not that important to do so).
 - Songs folder must remain accessible.
 - For any design changes -> all files are in /public folder
