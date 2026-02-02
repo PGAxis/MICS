@@ -10,7 +10,6 @@ import * as player from "./songMngmnt/playSong.js";
 import * as dbHelper from "./songMngmnt/databaseSearch.js";
 import * as playlist from "./songMngmnt/playlist.js";
 import * as queueHelper from "./songMngmnt/queue.js";
-import { resolve } from "dns";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -351,7 +350,7 @@ async function executeCommand(cmd, args) {
       queueHelper.toggleRepeat();
       break;
     case cmds.play:
-      const ret = await queueHelper.apiPlay(id);
+      const ret = await queueHelper.apiPlay(...args);
       return ret;
     case cmds.toggle:
       const state = await player.getState();
@@ -430,22 +429,73 @@ await loadCfg();
 process.stdin.setEncoding("utf8");
 
 process.stdin.on("data", async (data) => {
-  const cmd = data.trim();
+  const inst = data.trim();
+  const insts = inst.match(/(?:[^\s"]+|"[^"]*")+/g).map(arg => arg.replace(/^"|"$/g, ''));
 
-  if (cmd === "stop") {
+  if (insts[0] === "stop") {
     console.log("\nShutdown command recieved");
     await shutdown();
-  } else if (cmd === "pause") {
+    console.log("");
+  } else if (insts[0] === "pause") {
     await player.pause();
-  } else if (cmd === "play") {
+    console.log("");
+  } else if (insts[0] === "play") {
+    await cliPlay(insts);
+    console.log("");
+  } else if (insts[0] === "res") {
     await player.resume();
+    console.log("");
+  } else if (insts[0] === "next") {
+    await queueHelper.autoDequeue();
+    console.log("");
+  } else if (insts[0] === "prev") {
+    await queueHelper.apiPrev();
+    console.log("");
+  } else if (insts[0] === "help") {
+    console.log("  help - displays this menu\n  stop - shuts down the server\n  play - plays either song, if arguments \"-s id\" are passed,\n    or playlist, if arguments \"-p name\" are passed.\n    With playlist, argument \"-sh y/n\" sets the shuffle mode\n  pause - pauses playback\n  res - resumes playback\n  next - skips to next song\n  prev - skips to previous song (if less than 5 s are played)\n    or to the beginning of current song (if more than 5 s are played) \n");
+  } else {
+    console.log("No function associated with this command\n");
   }
 });
+
+async function cliPlay(args) {
+  args.shift();
+
+  if (args[0] === "-s") {
+    const id = Number(args[1]);
+    const ret = await queueHelper.apiPlay(id);
+    if (ret === 0) {
+      console.log(`No song with this ID: ${id}\n`);
+      return;
+    }
+    return;
+  } else if (args[0] == "-p") {
+    const name = args[1];
+    let shuffle = false;
+
+    if (args[2] === "-sh") {
+      if (args[3] === "y") {
+        shuffle = true;
+      }
+    }
+
+    const pl = playlist.listPlaylist(name);
+    if (!pl) {
+      console.log(`No playlist with this name: ${name}\n`);
+      return;
+    }
+
+    await queueHelper.initPlaylistQueue(pl, shuffle);
+    return;
+  }
+
+  console.log('Invalid args. Try "-s id" for song or "-p name (-sh y/n)" for playlist and shuffle');
+}
 
 async function shutdown() {
   stopping = true;
 
-  console.log("\n\nSaving...");
+  console.log("--------------------\n\nSaving...");
   
   const state = await player.getState();
   const pos = state.position;

@@ -25,10 +25,11 @@ async function apiEnqueue(id, index) {
   playlistPlaying = false;
   useShuffle = false;
   playlistInUse = null;
+  history = [];
 
   enqueue(id, index);
 
-  await queueChangedPlay();
+  if (index === 1) await queueChangedPlay(true);
 }
 
 async function apiDequeue(id, index) {
@@ -37,6 +38,7 @@ async function apiDequeue(id, index) {
   playlistPlaying = false;
   useShuffle = false;
   playlistInUse = null;
+  history = [];
 
   if (!index) {
     index = queue.find(s => s.id === id).index;
@@ -44,22 +46,28 @@ async function apiDequeue(id, index) {
 
   dequeue(id, index);
 
-  if (index === 1) await queueChangedPlay();
+  if (index === 1) await queueChangedPlay(true);
 }
 
 async function apiPrev() {
-  const lastId = history.pop();
+  const state = await player.getState();
 
-  if (lastId) {
-    enqueue(lastId, 1);
-
-    if (useShuffle) {
-      oldQueue = [...queue];
-      dequeue(queue.at(-1)?.id);
-    }
-
-    await queueChangedPlay(true);
+  if (state.position > 5.0) {
+    await player.setPos(0.0);
+    return;
   }
+
+  const lastId = history.pop();
+  if (!lastId) return;
+
+  enqueue(lastId, 1);
+
+  if (useShuffle) {
+    oldQueue = [...queue];
+    dequeue(queue.at(-1)?.id);
+  }
+
+  await queueChangedPlay(true);
 }
 
 async function apiPlay(id) {
@@ -75,6 +83,7 @@ async function apiPlay(id) {
     useShuffle = false;
     playlistInUse = null;
     queue = [];
+    history = [];
   }
 
   enqueue(id, index);
@@ -164,12 +173,6 @@ async function queueChangedPlay(force = false, notify = false, cfg = null) {
     const song = dbHelper.songByID(queue[0].id);
     if (!song) return;
     await player.play(song);
-  } else if (oldQueue.length > 1) {
-    if (oldQueue[1].id === queue[0].id && queue.length !== oldQueue.length + 1) {
-      const song = dbHelper.songByID(queue[0].id);
-      if (!song) return;
-      await player.play(song);
-    }
   }
 }
 
@@ -208,13 +211,14 @@ async function autoDequeue() {
     }
   }
 
-  await queueChangedPlay();
+  await queueChangedPlay(true);
 }
 
 async function initPlaylistQueue(playlist, shuffle) {
   playlistPlaying = false;
   useShuffle = false;
   playlistInUse = null;
+  history = [];
 
   //----------
 
@@ -250,8 +254,12 @@ async function playlistChanged(newPlaylist, changedSong) {
         playlistInUse = newPlaylist;
   
         oldQueue = [...queue];
+        if (!changedSong.index) {
+          changedSong.index = queue.find(s => s.id === changedSong.id).index;
+        }
+
         dequeue(changedSong.id);
-        await queueChangedPlay();
+        if (changedSong.index === 1) await queueChangedPlay();
       } else {
         if (!changedSong.index) {
           playlistInUse = newPlaylist;
@@ -296,13 +304,17 @@ async function playlistChanged(newPlaylist, changedSong) {
         playlistInUse = newPlaylist;
   
         oldQueue = [...queue];
+        if (!changedSong.index) {
+          changedSong.index = queue.find(s => s.id === changedSong.id).index;
+        }
+
         dequeue(changedSong.id);
 
         if (Math.ceil(newPlaylist.songs.length / 2) < queue.length) {
           dequeueLast();
         }
 
-        await queueChangedPlay();
+        if (changedSong.index === 1) await queueChangedPlay();
       } else {
         if (Math.ceil(newPlaylist.songs.length / 2) > Math.ceil(playlistInUse.songs.length / 2)) {
           playlistInUse = newPlaylist;
@@ -313,7 +325,6 @@ async function playlistChanged(newPlaylist, changedSong) {
           if (newSong) {
             enqueue(newSong.id);
           }
-          await queueChangedPlay();
         }
       }
     }
