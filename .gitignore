@@ -2,6 +2,7 @@ node_modules/
 covers/*
 !covers/placeholder.png
 !covers/placeholder-playlist.png
+db/music.db
 playlists/*
 songs/*
 !songs/info.txt
