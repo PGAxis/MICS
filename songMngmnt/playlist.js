@@ -46,6 +46,13 @@ function createPlaylist(name) {
   return data;
 }
 
+function existsPlaylist(name) {
+  if (!name) return false;
+  const filePath = path.join(playlistsDir, `${safeName(name)}.json`);
+  if (fs.existsSync(filePath)) return true;
+  return false;
+}
+
 function addSongToPlaylist(playlistName, songId, index = null) {
   if (!playlistName) throw new Error("No name provided");
   const filePath = path.join(playlistsDir, `${safeName(playlistName)}.json`);
@@ -102,7 +109,7 @@ function removePlaylist(playlistName) {
 
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
-    console.log("Removed playlist: ", playlistName);
+    console.log("Removed playlist: ", playlistName, "\n");
     return 200;
   } else {
     return 404;
@@ -123,6 +130,7 @@ export {
     listPlaylists,
     listPlaylist,
     createPlaylist,
+    existsPlaylist,
     addSongToPlaylist,
     removeSongFromPlaylist,
     removePlaylist

@@ -37,25 +37,26 @@ const cmds = {
   getSongId: 2,
   getPList: 3,
   getPListName: 4,
-  makePList: 5,
-  addToPlist: 6,
-  rmFromPList: 7,
-  rmPlist: 8,
-  getQueue: 9,
-  playPList: 10,
-  addQueue: 11,
-  rmQueue: 12,
-  queueRepeat: 13,
-  play: 14,
-  toggle: 15,
-  stop: 16,
-  next: 17,
-  prev: 18,
-  setVolume: 19,
-  state: 20,
-  getVolume: 21,
-  getLib: 22,
-  upload: 23
+  existsPlist: 5,
+  makePList: 6,
+  addToPlist: 7,
+  rmFromPList: 8,
+  rmPlist: 9,
+  getQueue: 10,
+  playPList: 11,
+  addQueue: 12,
+  rmQueue: 13,
+  queueRepeat: 14,
+  play: 15,
+  toggle: 16,
+  stop: 17,
+  next: 18,
+  prev: 19,
+  setVolume: 20,
+  state: 21,
+  getVolume: 22,
+  getLib: 23,
+  upload: 24
 }
 const commandQueue = [];
 let isProcessing = false;
@@ -125,6 +126,12 @@ server.get("/api/playlist/:name", async (req, res) => {
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
+});
+
+server.get("/api/playlist/exists/:name", async (req, res) => {
+  const name = req.params.name;
+  const exists = await enqueueCommand(cmds.existsPlist, [name]);
+  res.status(200).json({ exists: exists });
 });
 
 server.post("/api/playlists", async (req, res) => {
@@ -320,6 +327,9 @@ async function executeCommand(cmd, args) {
     case cmds.getPListName:
       const pl = playlist.listPlaylist(...args);
       return pl;
+    case cmds.existsPlist:
+      const exists = playlist.existsPlaylist(...args);
+      return exists;
     case cmds.makePList:
       const plist = playlist.createPlaylist(...args);
       return plist;
@@ -442,7 +452,7 @@ process.stdin.on("data", async (data) => {
   } else if (insts[0] === "play") {
     await cliPlay(insts);
     console.log("");
-  } else if (insts[0] === "res") {
+  } else if (insts[0] === "res" || insts[0] === "resume") {
     await player.resume();
     console.log("");
   } else if (insts[0] === "next") {
@@ -451,8 +461,11 @@ process.stdin.on("data", async (data) => {
   } else if (insts[0] === "prev") {
     await queueHelper.apiPrev();
     console.log("");
+  } else if (insts[0] === "autoplay") {
+    autoPlay(insts[1]);
+    console.log("");
   } else if (insts[0] === "help") {
-    console.log("  help - displays this menu\n  stop - shuts down the server\n  play - plays either song, if arguments \"-s id\" are passed,\n    or playlist, if arguments \"-p name\" are passed.\n    With playlist, argument \"-sh y/n\" sets the shuffle mode\n  pause - pauses playback\n  res - resumes playback\n  next - skips to next song\n  prev - skips to previous song (if less than 5 s are played)\n    or to the beginning of current song (if more than 5 s are played) \n");
+    console.log("  help - displays this menu\n  stop - shuts down the server\n  play - plays either song, if arguments \"-s id\" are passed,\n    or playlist, if arguments \"-p name\" are passed.\n    With playlist, argument \"-sh y/n\" sets the shuffle mode\n  pause - pauses playback\n  res - resumes playback\n  next - skips to next song\n  prev - skips to previous song (if less than 5 s are played)\n    or to the beginning of current song (if more than 5 s are played)\n  autoplay - sets automatic playback on server start to\n    on or off (if arguments y/n is passed) or\n    lists current setting if no arguments are passed\n");
   } else {
     console.log("No function associated with this command\n");
   }
@@ -461,35 +474,66 @@ process.stdin.on("data", async (data) => {
 async function cliPlay(args) {
   args.shift();
 
-  if (args[0] === "-s") {
-    const id = Number(args[1]);
-    const ret = await queueHelper.apiPlay(id);
-    if (ret === 0) {
-      console.log(`No song with this ID: ${id}\n`);
-      return;
-    }
-    return;
-  } else if (args[0] == "-p") {
-    const name = args[1];
-    let shuffle = false;
+  while (args.length > 0) {
+    const curr = args.shift();
 
-    if (args[2] === "-sh") {
-      if (args[3] === "y") {
-        shuffle = true;
+    if (curr === "-s") {
+      const id = args.shift();
+      if (!id || id <= 0) {
+        console.log("Please provide an ID. The ID must be bigger than 0.");
+        return;
       }
-    }
+      const ret = await queueHelper.apiPlay(id);
+      if (ret === 0) {
+        console.log(`No song with this ID: ${id}.\n`);
+        return;
+      }
+      return;
+    } else if (curr === "-p") {
+      const name = args.shift();
 
-    const pl = playlist.listPlaylist(name);
-    if (!pl) {
-      console.log(`No playlist with this name: ${name}\n`);
+      const exists = playlist.existsPlaylist(name);
+      if (!exists) {
+        console.log(`No playlist with this name: ${name}`);
+      }
+
+      const mayShuffle = args.shift();
+      if (mayShuffle !== null || mayShuffle !== "-sh") {
+        console.log(`Invalid argument "${mayShuffle}"`);
+      }
+
+      let shuffle = false;
+
+      if (mayShuffle === "-sh") {
+        const option = args.shift();
+        if (option === "y") {
+          shuffle = true;
+        }
+      }
+
+      const pl = playlist.listPlaylist(name);
+      await queueHelper.initPlaylistQueue(pl, shuffle);
+      return;
+    } else {
+      console.log('Invalid args. Try "-s id" for song or "-p name (-sh y/n)" for playlist and shuffle');
       return;
     }
-
-    await queueHelper.initPlaylistQueue(pl, shuffle);
-    return;
   }
+}
 
-  console.log('Invalid args. Try "-s id" for song or "-p name (-sh y/n)" for playlist and shuffle');
+function autoPlay(arg) {
+  if (arg === "y") {
+    cfg.autoplay = true;
+    console.log("Autoplay turned on");
+  }
+  if (arg === "n") {
+    cfg.autoplay = false;
+    console.log("Autoplay turned off");
+  }
+  if (!arg) {
+    const setting = cfg.autoplay ? "On" : "Off";
+    console.log(`Current autoplay setting: ${setting}`);
+  }
 }
 
 async function shutdown() {

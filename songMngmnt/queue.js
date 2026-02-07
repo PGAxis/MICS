@@ -106,6 +106,7 @@ async function apiLoadConfig(cfg) {
   playlistInUse = cfg.playlistInUse;
 
   await queueChangedPlay(true, true, cfg);
+  if (!cfg.autoplay) player.pause();
 
   player.setRepeatState(repeatQueue);
 }

@@ -1,7 +1,7 @@
 node_modules/
 covers/*
 !covers/placeholder.png
+!covers/placeholder-playlist.png
 playlists/*
 songs/*
 !songs/info.txt
-pat

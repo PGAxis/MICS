@@ -182,7 +182,7 @@ async function addSongs(songs) {
 
   tx();
 
-  console.log(`Addition complete! ${added} songs added.`);
+  console.log(`Addition complete! ${added} songs added.\n`);
 }
 
 export { scanSongs, addSongs };

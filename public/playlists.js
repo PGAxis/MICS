@@ -19,6 +19,7 @@ const playlistShuffle = document.getElementById("shuffle-play");
 const volumeBtn = document.getElementById("volume-btn");
 const volumePanel = document.getElementById("volume-panel");
 const volumeSlider = document.getElementById("volume-slider");
+const existsDiv = document.getElementById("exists");
 
 let oldPlaylists = [];
 
@@ -52,11 +53,19 @@ menuBack.addEventListener("click", () => {
   document.body.classList.remove("no-scroll");
 });
 
-finalAdd.addEventListener("click", () => {
+finalAdd.addEventListener("click", async () => {
   const name = input.value.trim();
 
   if (!name || name === "") {
     input.value = "";
+    return;
+  }
+
+  const res = await fetch(`/api/playlist/exists/${name}`);
+  const { exists } = await res.json();
+
+  if (exists) {
+    existsDiv.hidden = false;
     return;
   }
 
@@ -67,6 +76,7 @@ finalAdd.addEventListener("click", () => {
   });
 
   input.value = "";
+  existsDiv.hidden = true;
   overlay.style.display = "none";
   document.body.classList.remove("no-scroll");
 });
