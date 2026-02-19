@@ -335,11 +335,13 @@ async function executeCommand(cmd, args) {
       return plist;
     case cmds.addToPlist:
       const plst = playlist.addSongToPlaylist(...args);
+      saveCfg();
       await queueHelper.playlistChanged(plst, { id: args[1], index: args[2] });
       return plst;
     case cmds.rmFromPList:
       const pist = playlist.removeSongFromPlaylist(...args);
       await queueHelper.playlistChanged(pist, { id: args[1] });
+      saveCfg();
       return pist;
     case cmds.rmPlist:
       const stat = playlist.removePlaylist(...args);
@@ -464,8 +466,11 @@ process.stdin.on("data", async (data) => {
   } else if (insts[0] === "autoplay") {
     autoPlay(insts[1]);
     console.log("");
+  } else if (insts[0] === "queue") {
+    logQueue();
+    console.log("");
   } else if (insts[0] === "help") {
-    console.log("  help - displays this menu\n  stop - shuts down the server\n  play - plays either song, if arguments \"-s id\" are passed,\n    or playlist, if arguments \"-p name\" are passed.\n    With playlist, argument \"-sh y/n\" sets the shuffle mode\n  pause - pauses playback\n  res - resumes playback\n  next - skips to next song\n  prev - skips to previous song (if less than 5 s are played)\n    or to the beginning of current song (if more than 5 s are played)\n  autoplay - sets automatic playback on server start to\n    on or off (if arguments y/n is passed) or\n    lists current setting if no arguments are passed\n");
+    console.log("  help - displays this menu\n  stop - shuts down the server\n  play - plays either song, if arguments \"-s id\" are passed,\n    or playlist, if arguments \"-p name\" are passed.\n    With playlist, argument \"-sh y/n\" sets the shuffle mode\n  pause - pauses playback\n  res - resumes playback\n  next - skips to next song\n  prev - skips to previous song (if less than 5 s are played)\n    or to the beginning of current song (if more than 5 s are played)\n  autoplay - sets automatic playback on server start to\n    on or off (if arguments y/n is passed) or\n    lists current setting if no arguments are passed\n  queue - lists queue\n");
   } else {
     console.log("No function associated with this command\n");
   }
@@ -498,7 +503,7 @@ async function cliPlay(args) {
       }
 
       const mayShuffle = args.shift();
-      if (mayShuffle !== null || mayShuffle !== "-sh") {
+      if (mayShuffle !== null && mayShuffle !== "-sh") {
         console.log(`Invalid argument "${mayShuffle}"`);
       }
 
@@ -536,22 +541,46 @@ function autoPlay(arg) {
   }
 }
 
-async function shutdown() {
-  stopping = true;
+function logQueue() {
+  const queueItem = queueHelper.getQueueItem();
 
-  console.log("--------------------\n\nSaving...");
-  
+  if (queueItem.playlistPlaying) {
+    let text = `\nCurrently playing the playlist ${queueItem.playlistInUse.name}`;
+    if (queueItem.useShuffle) {
+      text += " on shuffle.";
+    } else {
+      text += ".";
+    }
+    console.log(text);
+    console.log("--------------------");
+  }
+
+  if (queueItem.queue.length === 0) {
+    console.log("The queue is empty.");
+  } else {
+    console.log("Queue:");
+
+    for (const queueSong of queueItem.queue) {
+      const song = dbHelper.songByID(queueSong.id);
+      console.log(`  ${queueSong.index}: ${song.artist} - ${song.name}`);
+    }
+  }
+}
+
+async function saveCfg(shutdown = false) {
   const state = await player.getState();
   const pos = state.position;
-  
-  await player.resume();
-  await player.stop();
 
-  await sleep(1000);
+  if (shutdown) {
+    await player.resume();
+    await player.stop();
 
-  await player.quit();
+    await sleep(1000);
 
-  await sleep(1000);
+    await player.quit();
+
+    await sleep(1000);
+  }
 
   const queueItem = queueHelper.getQueueItem();
 
@@ -564,6 +593,14 @@ async function shutdown() {
   cfg.playlistInUse = queueItem.playlistInUse;
 
   fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
+}
+
+async function shutdown() {
+  stopping = true;
+
+  console.log("--------------------\n\nSaving...");
+  
+  await saveCfg(true);
 
   console.log("\nShutting down...");
 
@@ -577,3 +614,6 @@ async function shutdown() {
     process.exit(0);
   }, 2000);
 }
+
+//TO-DO - maybe add song deletion?
+//        queue skip -> skips songs to get to set index in queue

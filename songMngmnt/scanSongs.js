@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { parseFile } from "music-metadata";
 import db from "../db/database.js";
+import { listPlaylists, removeSongFromPlaylist } from "./playlist.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,6 +50,7 @@ function saveCover(id, picture) {
 
 function removeSongs(files, dbSongs) {
   const fileSet = new Set(files.map(p => path.normalize(p)));
+  const playlists = listPlaylists();
 
   const deleteStmt = db.prepare("DELETE FROM songs WHERE id = ?");
 
@@ -60,6 +62,9 @@ function removeSongs(files, dbSongs) {
 
       if (!fileSet.has(songPath)) {
         deleteStmt.run(song.id);
+        for (const pl of playlists) {
+          removeSongFromPlaylist(pl.name, song.id);
+        }
         fs.rmSync(path.join(COVER_FOLDER, `${song.id}.jpg`));
         removed++;
       }
